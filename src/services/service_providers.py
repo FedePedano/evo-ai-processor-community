@@ -82,12 +82,15 @@ async_db_url = get_async_db_url(db_url) if db_url else None
 # PgBouncer en TRANSACTION mode (Supabase 6543) no soporta prepared statements:
 # hay DOS caches que generan statements nombrados (__asyncpg_stmt_N__) y ambos
 # deben apagarse: el interno de asyncpg (connect_args statement_cache_size=0)
-# y el del dialecto SQLAlchemy (prepared_statement_cache_size=0, default 100).
-# Gated por DB_PGBOUNCER para no tocar el path local directo.
+# y el del dialecto SQLAlchemy. OJO: en SQLAlchemy 2.0 prepared_statement_cache_size
+# SOLO vale por query string en la URL (?prepared_statement_cache_size=0);
+# como kwarg de create_async_engine tira TypeError. Gated por DB_PGBOUNCER
+# para no tocar el path local directo.
 _engine_kwargs: dict = {"pool_pre_ping": True, "pool_recycle": 1800}
-if os.getenv("DB_PGBOUNCER") == "true":
+if os.getenv("DB_PGBOUNCER") == "true" and async_db_url:
+    sep = "&" if "?" in async_db_url else "?"
+    async_db_url = f"{async_db_url}{sep}prepared_statement_cache_size=0"
     _engine_kwargs["connect_args"] = {"statement_cache_size": 0}
-    _engine_kwargs["prepared_statement_cache_size"] = 0
 session_service = DatabaseSessionService(
     db_url=async_db_url,
     **_engine_kwargs,
