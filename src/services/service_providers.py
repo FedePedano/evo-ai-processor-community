@@ -78,10 +78,16 @@ async_db_url = get_async_db_url(db_url) if db_url else None
 # one is transparently replaced instead of failing the request; pool_recycle
 # retires connections before they can go stale. asyncpg does not accept libpq
 # keepalive params, so pre_ping + recycle are the resilience levers here.
+#
+# PgBouncer en TRANSACTION mode (Supabase 6543) no soporta prepared statements:
+# sin statement_cache_size=0, asyncpg falla con "prepared statement does not
+# exist". Gated por DB_PGBOUNCER para no tocar el path local directo.
+_connect_args = {"statement_cache_size": 0} if os.getenv("DB_PGBOUNCER") == "true" else {}
 session_service = DatabaseSessionService(
     db_url=async_db_url,
     pool_pre_ping=True,
     pool_recycle=1800,
+    connect_args=_connect_args,
 )
 
 
