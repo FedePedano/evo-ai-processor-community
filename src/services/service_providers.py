@@ -80,14 +80,17 @@ async_db_url = get_async_db_url(db_url) if db_url else None
 # keepalive params, so pre_ping + recycle are the resilience levers here.
 #
 # PgBouncer en TRANSACTION mode (Supabase 6543) no soporta prepared statements:
-# sin statement_cache_size=0, asyncpg falla con "prepared statement does not
-# exist". Gated por DB_PGBOUNCER para no tocar el path local directo.
-_connect_args = {"statement_cache_size": 0} if os.getenv("DB_PGBOUNCER") == "true" else {}
+# hay DOS caches que generan statements nombrados (__asyncpg_stmt_N__) y ambos
+# deben apagarse: el interno de asyncpg (connect_args statement_cache_size=0)
+# y el del dialecto SQLAlchemy (prepared_statement_cache_size=0, default 100).
+# Gated por DB_PGBOUNCER para no tocar el path local directo.
+_engine_kwargs: dict = {"pool_pre_ping": True, "pool_recycle": 1800}
+if os.getenv("DB_PGBOUNCER") == "true":
+    _engine_kwargs["connect_args"] = {"statement_cache_size": 0}
+    _engine_kwargs["prepared_statement_cache_size"] = 0
 session_service = DatabaseSessionService(
     db_url=async_db_url,
-    pool_pre_ping=True,
-    pool_recycle=1800,
-    connect_args=_connect_args,
+    **_engine_kwargs,
 )
 
 
