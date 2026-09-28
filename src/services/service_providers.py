@@ -91,6 +91,12 @@ if os.getenv("DB_PGBOUNCER") == "true" and async_db_url:
     sep = "&" if "?" in async_db_url else "?"
     async_db_url = f"{async_db_url}{sep}prepared_statement_cache_size=0"
     _engine_kwargs["connect_args"] = {"statement_cache_size": 0}
+    logger.info("PgBouncer guard ON: named prepared statements disabled for ADK engine")
+else:
+    logger.warning(
+        "PgBouncer guard OFF (DB_PGBOUNCER!=true): named prepared statements "
+        "will poison Supavisor sessions and crash future restarts"
+    )
 session_service = DatabaseSessionService(
     db_url=async_db_url,
     **_engine_kwargs,
