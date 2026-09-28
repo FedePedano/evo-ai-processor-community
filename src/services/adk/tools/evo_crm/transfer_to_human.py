@@ -177,6 +177,42 @@ def create_transfer_to_human_tool(
                     "message": "Either assignee_id or team_id is required. If transfer_rules are configured, they will be used automatically. Otherwise, please provide assignee_id or team_id explicitly.",
                     "conversation_id": effective_conversation_id,
                 }
+
+            # Observabilidad: quién deriva lo deja asentado (el processor no
+            # logueaba tool-calls y era imposible atribuir transfers duplicados).
+            logger.info(
+                "transfer_to_human called conversation=%s assignee=%s team=%s reason=%s",
+                effective_conversation_id, effective_assignee_id,
+                effective_team_id, (reason or "")[:160],
+            )
+
+            # Idempotencia: si la conversación ya está en open con el mismo
+            # destino, no re-ejecutar (evita doble automatización / doble nota).
+            # Best-effort: si el GET falla, se sigue con el transfer normal.
+            try:
+                current = await client.get(f"/conversations/{effective_conversation_id}")
+                cur = current.get("data", current) if isinstance(current, dict) else {}
+                if isinstance(cur, dict) and str(cur.get("status", "")).lower() == "open":
+                    same_target = False
+                    if effective_assignee_id and str(cur.get("assignee_id") or "") == str(effective_assignee_id):
+                        same_target = True
+                    if effective_team_id and str(cur.get("team_id") or "") == str(effective_team_id):
+                        same_target = True
+                    if same_target:
+                        logger.info(
+                            "transfer_to_human skipped (already open + assigned) conversation=%s",
+                            effective_conversation_id,
+                        )
+                        return {
+                            "status": "success",
+                            "message": "Conversation already transferred (open + assigned). No action taken.",
+                            "conversation_id": effective_conversation_id,
+                            "assignee_id": effective_assignee_id,
+                            "team_id": effective_team_id,
+                            "dedup": True,
+                        }
+            except Exception as guard_error:
+                logger.warning(f"transfer_to_human guard check failed, proceeding: {guard_error}")
             
             logger.info(
                 f"Transferring conversation {effective_conversation_id} to agent {effective_assignee_id}"
