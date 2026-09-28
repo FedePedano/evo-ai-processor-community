@@ -68,11 +68,16 @@ def _transcript(messages: List[Dict[str, Any]]) -> str:
 async def summarize_conversation(
     request: Request,
     token: str = Query(default=""),
+    agent_name: Optional[str] = Query(default=None, alias="agent"),
     db: Session = Depends(get_db),
 ):
     expected = os.getenv("SUMMARIZE_TOKEN", "")
     if not expected or token != expected:
         raise HTTPException(status_code=403, detail="invalid token")
+
+    # Multi-canal: ?agent=Nombre permite que cada regla de automatización
+    # apunte a su propio Resumidor; sin el param se usa el default del env.
+    summarizer_name = (agent_name or "").strip() or SUMMARIZER_AGENT_NAME
 
     try:
         payload = await request.json()
@@ -84,11 +89,11 @@ async def summarize_conversation(
 
     agent = (
         db.query(Agent)
-        .filter(Agent.name == SUMMARIZER_AGENT_NAME, Agent.type == "llm")
+        .filter(Agent.name == summarizer_name, Agent.type == "llm")
         .first()
     )
     if not agent or not (agent.instruction or "").strip():
-        raise HTTPException(status_code=404, detail="summarizer agent missing or empty")
+        raise HTTPException(status_code=404, detail=f"summarizer agent '{summarizer_name}' missing or empty")
 
     api_key, provider = await get_api_key(db, agent)
     if not api_key:
