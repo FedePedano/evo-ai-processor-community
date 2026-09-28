@@ -48,7 +48,10 @@ class EvoAuthMiddleware(BaseHTTPMiddleware):
     SKIP_PATHS = [
         "/", "/docs", "/redoc", "/openapi.json",
         "/health", "/ready", "/healthz", "/readyz",
-        "/favicon.ico", "/static"
+        "/favicon.ico", "/static",
+        # Webhook de automatización CRM (auth propia por ?token=SUMMARIZE_TOKEN,
+        # el webhook no puede mandar headers). Ver summarize_routes.py.
+        "/api/v1/agents/summarize",
     ]
     
     def __init__(self, app: ASGIApp):
