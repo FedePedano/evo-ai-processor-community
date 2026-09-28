@@ -102,6 +102,11 @@ async def summarize_conversation(
     try:
         msgs_resp = await client.get(f"/api/v1/conversations/{conv_id}/messages")
     except Exception as e:
+        # La conversación pudo borrarse entre el webhook y este llamado:
+        # no es error, se omite sin marcar la regla como fallida.
+        if "404" in str(e):
+            logger.warning(f"summarize: conversation {conv_id} gone, skipping")
+            return {"ok": True, "skipped": "conversation not found"}
         logger.error(f"summarize: cannot read messages of {conv_id}: {e}")
         raise HTTPException(status_code=502, detail=f"cannot read messages: {e}")
 
@@ -141,6 +146,9 @@ async def summarize_conversation(
             {"content": summary, "private": True},
         )
     except Exception as e:
+        if "404" in str(e):
+            logger.warning(f"summarize: conversation {conv_id} deleted mid-flight, skipping")
+            return {"ok": True, "skipped": "conversation deleted mid-flight"}
         logger.error(f"summarize: cannot post private note to {conv_id}: {e}")
         raise HTTPException(status_code=502, detail=f"cannot post note: {e}")
 
