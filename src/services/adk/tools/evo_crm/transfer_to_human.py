@@ -129,12 +129,22 @@ def create_transfer_to_human_tool(
             }
         """
         try:
-            # Extract conversation_id from metadata if not provided
-            effective_conversation_id = conversation_id
-            if not effective_conversation_id and tool_context:
-                effective_conversation_id = _extract_conversation_id_from_metadata(tool_context)
-                if effective_conversation_id:
-                    logger.info(f"Extracted conversation_id from metadata: {effective_conversation_id}")
+            # FIX Beexa 2026-09-29: el conversation_id de la metadata de sesion
+            # es la unica fuente confiable. El modelo a veces confabula UUIDs
+            # (ej: pasa el contact_id como conversation_id -> 404 en el CRM).
+            # Si el modelo paso uno distinto, se ignora con warning.
+            metadata_conversation_id = None
+            if tool_context:
+                metadata_conversation_id = _extract_conversation_id_from_metadata(tool_context)
+            if conversation_id and metadata_conversation_id and str(conversation_id) != str(metadata_conversation_id):
+                logger.warning(
+                    "transfer_to_human ignoring model-passed conversation_id=%s, "
+                    "using session metadata conversation_id=%s",
+                    conversation_id, metadata_conversation_id,
+                )
+            effective_conversation_id = metadata_conversation_id or conversation_id
+            if effective_conversation_id and metadata_conversation_id:
+                logger.info(f"Extracted conversation_id from metadata: {effective_conversation_id}")
             
             # Validate required parameters
             if not effective_conversation_id:

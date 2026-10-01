@@ -475,7 +475,11 @@ class StandardRunner:
                         final_response_text = event.content.parts[0].text
 
                     if event.actions and event.actions.escalate:
-                        final_response_text = f"Agent escalated: {event.error_message or 'No specific message.'}"
+                        # No pisar una respuesta ya generada por el loop (ej: el
+                        # respondedor escribio su texto y cerro con exit_loop).
+                        # El "Agent escalated: ..." solo aparece si nadie respondio.
+                        if not final_response_text:
+                            final_response_text = f"Agent escalated: {event.error_message or 'No specific message.'}"
                         break
 
                 logger.info(

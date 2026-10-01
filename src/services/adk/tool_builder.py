@@ -78,6 +78,40 @@ def _apply_vault_refs(tool_config, headers, _db=None):
     finally:
         session.close()
 
+def _with_stored_google_credentials(db, agent_id, provider, credentials):
+    """Completa el stub de credenciales del agent.config con los tokens OAuth
+    reales que el callback guarda en evo_core_agent_integrations.
+
+    Sin esto, el stub (solo email/connected) llega al tool y Google responde
+    RefreshError por falta de refresh_token/client_id/client_secret.
+    Ante cualquier fallo devuelve el stub intacto (comportamiento actual).
+    """
+    try:
+        if not db or not agent_id or not provider:
+            return credentials
+        from sqlalchemy import text as _text
+        row = db.execute(
+            _text(
+                "SELECT config FROM evo_core_agent_integrations "
+                "WHERE agent_id = CAST(:agent_id AS uuid) AND provider = :provider LIMIT 1"
+            ),
+            {"agent_id": str(agent_id), "provider": provider},
+        ).fetchone()
+        if not row or not row[0]:
+            return credentials
+        stored = row[0] if isinstance(row[0], dict) else json.loads(row[0])
+        merged = {**(stored or {}), **(credentials or {})}
+        logger.info(
+            f"Merged stored Google credentials for provider {provider} (agent {agent_id})"
+        )
+        return merged
+    except Exception as e:
+        logger.warning(
+            f"Could not merge stored Google credentials ({provider}): {e}"
+        )
+        return credentials
+
+
 class ToolBuilder:
     def __init__(self):
         self.tools = []
@@ -564,6 +598,14 @@ class ToolBuilder:
         logger.debug(f"Checking Google Calendar integration. Integrations keys: {list(integrations.keys()) if integrations else 'None'}")
         google_calendar_config = integrations.get("google-calendar") or integrations.get("google_calendar")
         google_calendar_credentials = integrations.get("google-calendar-credentials") or integrations.get("google_calendar_credentials")
+        # FIX Beexa 2026-09-29: el stub del config no trae tokens; completar
+        # con los guardados por el callback OAuth (ver _with_stored_google_credentials).
+        google_calendar_credentials = _with_stored_google_credentials(
+            db,
+            agent_id or agent_config.get("id") or agent_config.get("agent_id"),
+            "google_calendar_credentials",
+            google_calendar_credentials,
+        )
         logger.debug(f"Google Calendar config: {google_calendar_config}")
         logger.debug(f"Google Calendar credentials available: {bool(google_calendar_credentials)}")
 
@@ -635,6 +677,14 @@ class ToolBuilder:
         logger.debug(f"Checking Google Sheets integration. Integrations keys: {list(integrations.keys()) if integrations else 'None'}")
         google_sheets_config = integrations.get("google-sheets") or integrations.get("google_sheets")
         google_sheets_credentials = integrations.get("google-sheets-credentials") or integrations.get("google_sheets_credentials")
+        # FIX Beexa 2026-09-29: el stub del config no trae tokens; completar
+        # con los guardados por el callback OAuth (ver _with_stored_google_credentials).
+        google_sheets_credentials = _with_stored_google_credentials(
+            db,
+            agent_id or agent_config.get("id") or agent_config.get("agent_id"),
+            "google_sheets_credentials",
+            google_sheets_credentials,
+        )
         logger.debug(f"Google Sheets config: {google_sheets_config}")
         logger.debug(f"Google Sheets credentials available: {bool(google_sheets_credentials)}")
 
